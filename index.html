@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cookie Run Game with Bonus Time</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { background-color: #f0f0f0; display: block; }
+    .health-bar { position: absolute; top: 10px; left: 10px; background-color: #f00; height: 20px; width: 200px; }
+    .health-bar-inner { background-color: #0f0; height: 100%; width: 100%; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div class="health-bar"><div class="health-bar-inner" id="healthBar"></div></div>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 600;
+
+    let player = { 
+      x: 100, y: 500, width: 50, height: 50, speedY: 0, jumping: false, jumpCount: 0, health: 100 
+    };
+    let obstacles = [];
+    let potions = [];
+    let jellies = [];
+    let score = 0;
+    let bonusTime = false;
+    let bonusTimer = 0;
+    let bonusMultiplier = 1;
+    let isFlying = false;
+    let healthTimer = 0;
+
+    // 플레이어 그리기 (용감한 쿠키 모양)
+    function drawPlayer() {
+      ctx.fillStyle = '#d2691e'; // 쿠키 색상 (용감한 쿠키)
+      ctx.beginPath();
+      ctx.arc(player.x + player.width / 2, player.y + player.height / 2, player.width / 2, 0, Math.PI * 2); // 원형 쿠키
+      ctx.fill();
+    }
+
+    // 장애물 그리기
+    function drawObstacle() {
+      ctx.fillStyle = 'red';
+      obstacles.forEach(obstacle => {
+        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+      });
+    }
+
+    // 체력 물약 그리기
+    function drawPotions() {
+      ctx.fillStyle = 'green';
+      potions.forEach(potion => {
+        ctx.beginPath();
+        ctx.arc(potion.x + potion.width / 2, potion.y + potion.height / 2, 15, 0, Math.PI * 2); // 하트 모양으로 그리기
+        ctx.fill();
+      });
+    }
+
+    // 젤리 그리기
+    function drawJellies() {
+      ctx.fillStyle = 'purple'; 
+      jellies.forEach(jelly => {
+        ctx.beginPath();
+        ctx.arc(jelly.x, jelly.y, 15, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // 장애물 생성
+    function createObstacle() {
+      const size = Math.random() * (50 - 20) + 20;
+      obstacles.push({ x: canvas.width, y: canvas.height - 50, width: size, height: size });
+    }
+
+    // 체력 물약 생성
+    function createPotion() {
+      const size = 30;
+      potions.push({ x: canvas.width, y: Math.random() * (canvas.height - size), width: size, height: size });
+    }
+
+    // 젤리 생성
+    function createJelly() {
+      jellies.push({ x: Math.random() * canvas.width, y: Math.random() * (canvas.height - 100), radius: 15 });
+    }
+
+    // 장애물 이동
+    function moveObstacles() {
+      let speed = 5;
+      if (bonusTime) speed = 3;
+      obstacles.forEach(obstacle => {
+        obstacle.x -= speed;
+        if (obstacle.x + obstacle.width < 0) {
+          obstacles.shift();
+          score += bonusMultiplier;
+        }
+      });
+    }
+
+    // 체력 물약 이동
+    function movePotions() {
+      potions.forEach(potion => {
+        potion.x -= 5;
+        if (potion.x + potion.width < 0) {
+          potions.shift();
+        }
+      });
+    }
+
+    // 젤리 이동
+    function moveJellies() {
+      jellies.forEach(jelly => {
+        jelly.x -= 5;
+        if (jelly.x + jelly.radius < 0) {
+          jellies.shift();
+        }
+      });
+    }
+
+    // 점프
+    function jump() {
+      if (player.jumpCount < 2) { // 두 번의 점프를 허용
+        player.speedY = -15;
+        player.jumpCount++;
+      }
+    }
+
+    // 슬라이드
+    function slide() {
+      if (!player.sliding) {
+        player.sliding = true;
+        setTimeout(() => player.sliding = false, 300);
+      }
+    }
+
+    // 플레이어 업데이트
+    function updatePlayer() {
+      player.y += player.speedY;
+      if (player.y + player.height >= canvas.height) {
+        player.y = canvas.height - player.height;
+        player.speedY = 0;
+        player.jumping = false;
+        player.jumpCount = 0; // 바닥에 닿으면 점프 횟수 초기화
+      } else {
+        player.speedY += 1;
+      }
+    }
+
+    // 충돌 감지
+    function checkCollision() {
+      obstacles.forEach(obstacle => {
+        if (player.x + player.width > obstacle.x && player.x < obstacle.x + obstacle.width && player.y + player.height > obstacle.y) {
+          player.health -= 10;
+          if (player.health <= 0) {
+            alert('Game Over! Final Score: ' + score);
+            resetGame();
+          }
+        }
+      });
+
+      potions.forEach((potion, index) => {
+        if (player.x + player.width > potion.x && player.x < potion.x + potion.width && player.y + player.height > potion.y) {
+          player.health = Math.min(100, player.health + 20);
+          potions.splice(index, 1);
+        }
+      });
+
+      jellies.forEach((jelly, index) => {
+        const dist = Math.sqrt((player.x - jelly.x) ** 2 + (player.y - jelly.y) ** 2);
+        if (dist < player.width / 2 + jelly.radius) {
+          score += 10;
+          jellies.splice(index, 1);
+        }
+      });
+    }
+
+    // 보너스 타임 시작
+    function startBonusTime() {
+      bonusTime = true;
+      isFlying = true;
+      bonusTimer = 5000; // 5초간 보너스 타임
+      bonusMultiplier = 2; // 점수 배수 2배
+    }
+
+    // 보너스 타임 중 처리
+    function updateBonusTime() {
+      if (bonusTime) {
+        bonusTimer -= 100;
+        if (bonusTimer <= 0) {
+          bonusTime = false;
+          isFlying = false;
+          bonusMultiplier = 1;
+        }
+      }
+    }
+
+    // 체력 게이지 업데이트
+    function updateHealthBar() {
+      const healthBar = document.getElementById('healthBar');
+      healthBar.style.width = player.health + '%';
+    }
+
+    // 게임 리셋
+    function resetGame() {
+      player.x = 100;
+      player.y = 500;
+      player.speedY = 0;
+      player.jumping = false;
+      player.jumpCount = 0;
+      player.health = 100;
+      obstacles = [];
+      potions = [];
+      jellies = [];
+      score = 0;
+    }
+
+    // 게임 루프
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (isFlying) {
+        ctx.fillStyle = 'skyblue';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(100, 100, 150, 0, Math.PI * 2);
+        ctx.fill();
+        drawJellies(); // 젤리 그리기
+      } else {
+        drawPlayer();
+        drawObstacle();
+        drawPotions();
+        moveObstacles();
+        movePotions();
+        moveJellies();
+      }
+
+      updatePlayer();
+      checkCollision();
+      updateBonusTime();
+      updateHealthBar();
+
+      ctx.fillStyle = 'black';
+      ctx.font = '20px Arial';
+      ctx.fillText('Score: ' + score, 20, 30);
+      ctx.fillText('Health: ' + player.health, 20, 60);
+
+      if (bonusTime) {
+        ctx.fillStyle = 'red';
+        ctx.fillText('Bonus Time!', canvas.width - 150, 30);
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // 키보드 이벤트
+    document.addEventListener('keydown', (event) => {
+      if (event.code === 'Space') jump();
+      if (event.code === 'ArrowDown') slide();
+    });
+
+    setInterval(createObstacle, 2000);
+    setInterval(createPotion, 5000);
+    setInterval(createJelly, 1000);
+    setInterval(startBonusTime, 30000);
+
+    gameLoop();
+  </script>
+</body>
+</html>
